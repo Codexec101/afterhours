@@ -78,3 +78,20 @@ export function humanizeMinuteRanges(message: string): string {
     return `(${formatMinute(Number(start))} – ${formatMinute(Number(end))})`;
   });
 }
+
+/** Compact length such as `45m`, `2h`, or `1h 30m`. */
+export function formatDurationShort(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+
+  if (hours === 0) {
+    return `${remainder}m`;
+  }
+
+  return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
+}
+
+/** Axis label for a whole hour, such as `5 PM`. Minute 1440 reads `12 AM`. */
+export function formatHourLabel(minute: number): string {
+  return formatMinute(minute).replace(":00 ", " ");
+}

@@ -2,11 +2,11 @@ export function EmptyPlan({ taskCount, commitmentCount }: { taskCount: number; c
   const hasInputs = taskCount > 0 || commitmentCount > 0;
 
   return (
-    <section className="panel px-5 py-8 sm:px-10 sm:py-10">
+    <section className="panel px-5 py-7 sm:px-8 sm:py-8">
       <p className="kicker">Today</p>
       {hasInputs ? (
         <>
-          <h2 className="mt-4 font-serif text-3xl leading-tight text-ink sm:text-4xl">Ready to place the day.</h2>
+          <h2 className="mt-3 font-serif text-2xl leading-tight text-ink sm:text-3xl">Ready to place the day.</h2>
           <p className="mt-4 max-w-lg text-base leading-relaxed text-muted">
             The desk has {countLabel(taskCount, "flexible task")} and {countLabel(commitmentCount, "fixed commitment")}.
             Generate a plan when you want them placed.
@@ -14,11 +14,11 @@ export function EmptyPlan({ taskCount, commitmentCount }: { taskCount: number; c
         </>
       ) : (
         <>
-          <h2 className="mt-4 font-serif text-3xl leading-tight text-ink sm:text-4xl">Nothing is on the day yet.</h2>
+          <h2 className="mt-3 font-serif text-2xl leading-tight text-ink sm:text-3xl">Nothing is on the day yet.</h2>
           <p className="mt-4 max-w-lg text-base leading-relaxed text-muted">
             Set the hours you can use, add what must happen, then add what could happen. The plan appears here after you generate it.
           </p>
-          <ol className="mt-8 space-y-4 text-sm leading-relaxed text-muted">
+          <ol className="mt-6 space-y-3 text-sm leading-relaxed text-muted">
             <li>
               <span className="mr-3 font-serif text-accent">01</span>
               Choose the window, breaks, and the quiet buffer at the end.

@@ -3,6 +3,8 @@ import { MINUTES_PER_DAY } from "../types/planner.ts";
 import {
   formatClockInput,
   formatDuration,
+  formatDurationShort,
+  formatHourLabel,
   formatMinute,
   formatMinuteRange,
   humanizeMinuteRanges,
@@ -52,5 +54,20 @@ describe("humanizeMinuteRanges", () => {
     ).toBe(
       'Fixed commitment "Dinner" overlaps the reserved end-of-day buffer (9:30 PM – 10:00 PM).',
     );
+  });
+});
+
+describe("compact formatting", () => {
+  it("writes short durations", () => {
+    expect(formatDurationShort(45)).toBe("45m");
+    expect(formatDurationShort(120)).toBe("2h");
+    expect(formatDurationShort(95)).toBe("1h 35m");
+  });
+
+  it("writes hour labels, with midnight as 12 AM", () => {
+    expect(formatHourLabel(17 * 60)).toBe("5 PM");
+    expect(formatHourLabel(0)).toBe("12 AM");
+    expect(formatHourLabel(MINUTES_PER_DAY)).toBe("12 AM");
+    expect(formatHourLabel(12 * 60)).toBe("12 PM");
   });
 });

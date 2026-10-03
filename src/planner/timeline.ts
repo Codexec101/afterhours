@@ -69,3 +69,75 @@ function openRow(startMinute: number, endMinute: number): OpenRow {
     endMinute,
   };
 }
+
+export interface LaidOutBlock {
+  block: ScheduledBlock;
+  /** Percent of the planning window, clamped to 0..100. */
+  leftPercent: number;
+  widthPercent: number;
+}
+
+export interface TimelineLayout {
+  windowMinutes: number;
+  /** Whole-hour instants inside the planning window. */
+  ticks: { minute: number; leftPercent: number }[];
+  tasks: LaidOutBlock[];
+  commitments: LaidOutBlock[];
+  breaks: LaidOutBlock[];
+  buffer: { startMinute: number; endMinute: number; leftPercent: number; widthPercent: number } | null;
+}
+
+/**
+ * Horizontal geometry for one generated plan. Positions come straight from the
+ * engine's blocks and the planning window; nothing is rescheduled here.
+ * Each lane holds one kind of block, and the engine never overlaps blocks of
+ * the same kind, so lane items cannot collide.
+ */
+export function buildTimelineLayout(result: ScheduleResult, settings: PlannerSettings): TimelineLayout {
+  const start = settings.planningStartMinute;
+  const end = settings.planningEndMinute;
+  const span = end - start;
+  const percent = (minute: number) => ((Math.min(end, Math.max(start, minute)) - start) / span) * 100;
+
+  const place = (block: ScheduledBlock): LaidOutBlock | null => {
+    const from = percent(block.startMinute);
+    const to = percent(block.endMinute);
+
+    return to > from ? { block, leftPercent: from, widthPercent: to - from } : null;
+  };
+
+  const lanes = { task: [] as LaidOutBlock[], commitment: [] as LaidOutBlock[], break: [] as LaidOutBlock[] };
+
+  for (const block of result.blocks) {
+    const placed = place(block);
+
+    if (placed) {
+      lanes[block.kind].push(placed);
+    }
+  }
+
+  const ticks: TimelineLayout["ticks"] = [];
+
+  for (let minute = Math.ceil(start / 60) * 60; minute <= end; minute += 60) {
+    ticks.push({ minute, leftPercent: percent(minute) });
+  }
+
+  const bufferStart = end - settings.endOfDayBufferMinutes;
+
+  return {
+    windowMinutes: span,
+    ticks,
+    tasks: lanes.task,
+    commitments: lanes.commitment,
+    breaks: lanes.break,
+    buffer:
+      settings.endOfDayBufferMinutes > 0
+        ? {
+            startMinute: bufferStart,
+            endMinute: end,
+            leftPercent: percent(bufferStart),
+            widthPercent: 100 - percent(bufferStart),
+          }
+        : null,
+  };
+}

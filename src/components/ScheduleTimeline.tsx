@@ -1,243 +1,280 @@
-import { Coffee, Moon, PenLine, Pin } from "lucide-react";
 import type { ReactNode } from "react";
-import { buildTimeline, type TimelineRow } from "../planner/timeline.ts";
-import type { PlannerSettings, ScheduleResult, ScheduledTaskBlock, Task } from "../types/planner.ts";
-import { formatDuration, formatMinute, formatMinuteRange } from "../utils/time.ts";
+import { buildTimelineLayout, type LaidOutBlock } from "../planner/timeline.ts";
+import type {
+  EnergyLevel,
+  PlannerSettings,
+  Priority,
+  ScheduleResult,
+  ScheduledBlock,
+  ScheduledTaskBlock,
+  Task,
+} from "../types/planner.ts";
+import { formatDurationShort, formatHourLabel, formatMinute, formatMinuteRange } from "../utils/time.ts";
+
+/** Narrowest readable width for one hour. Shorter windows fill the panel; longer ones scroll sideways. */
+const HOUR_MIN_PX = 132;
+const LABEL_COLUMN = "5.25rem";
 
 const LEGEND = [
   { tone: "task", label: "Task" },
   { tone: "commitment", label: "Commitment" },
   { tone: "break", label: "Break" },
   { tone: "buffer", label: "Buffer" },
-  { tone: "open", label: "Open" },
 ] as const;
+
+const ENERGY_BARS: Record<EnergyLevel, number> = { low: 1, medium: 2, high: 3 };
 
 export function ScheduleTimeline({
   result,
   settings,
   tasks,
   onToggleCompleted,
+  onOpenTask,
 }: {
   result: ScheduleResult;
   settings: PlannerSettings;
   tasks: readonly Task[];
   onToggleCompleted: (id: string) => void;
+  onOpenTask: (id: string) => void;
 }) {
-  const rows = buildTimeline(result, settings);
+  const layout = buildTimelineLayout(result, settings);
   const tasksById = new Map(tasks.map((task) => [task.id, task]));
+  const hours = layout.windowMinutes / 60;
 
   return (
     <section aria-labelledby="timeline-heading">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <h2 id="timeline-heading" className="font-serif text-3xl text-ink sm:text-4xl">
-          The day
-        </h2>
-        <p className="kicker">{formatMinuteRange(settings.planningStartMinute, settings.planningEndMinute)}</p>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div>
+          <h2 id="timeline-heading" className="font-serif text-2xl text-ink sm:text-3xl">
+            The day
+          </h2>
+          <p className="kicker mt-2">{formatMinuteRange(settings.planningStartMinute, settings.planningEndMinute)}</p>
+        </div>
+        <ul className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Schedule legend">
+          {LEGEND.map((item) => (
+            <li key={item.tone} className="kind-pill">
+              <span className={`swatch swatch-${item.tone}`} aria-hidden="true" />
+              {item.label}
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-2" aria-label="Schedule legend">
-        {LEGEND.map((item) => (
-          <li key={item.tone} className="kind-pill">
-            <span className={`swatch swatch-${item.tone}`} aria-hidden="true" />
-            {item.label}
-          </li>
-        ))}
-      </ul>
-      <ol>
-        {rows.map((row) => (
-          <li key={row.id}>
-            <TimelineItem row={row} task={taskForRow(row, tasksById)} onToggleCompleted={onToggleCompleted} />
+
+      {layout.tasks.length === 0 ? (
+        <p className="empty-note mb-4">
+          No task was placed in this plan. Check Left for later below, or add tasks and update the plan.
+        </p>
+      ) : null}
+
+      <ol className="sr-only">
+        {result.blocks.map((block) => (
+          <li key={block.id}>
+            {block.title}, {block.kind}, {formatMinuteRange(block.startMinute, block.endMinute)}
           </li>
         ))}
       </ol>
+
+      <div className="overflow-x-auto overflow-y-hidden pb-1" tabIndex={0} aria-label="Daily timeline, scrolls sideways on narrow screens">
+        <div style={{ minWidth: `calc(${LABEL_COLUMN} + ${Math.ceil(hours * HOUR_MIN_PX)}px)` }}>
+          <Row label="" height="1.75rem" first>
+            {layout.ticks.map((tick, index) => (
+              <span
+                key={tick.minute}
+                className="tl-tick-label"
+                style={{
+                  left: `${tick.leftPercent}%`,
+                  transform:
+                    tick.leftPercent < 3 && index === 0
+                      ? "none"
+                      : tick.leftPercent > 97
+                        ? "translateX(-100%)"
+                        : "translateX(-50%)",
+                }}
+              >
+                {formatHourLabel(tick.minute)}
+              </span>
+            ))}
+          </Row>
+          <Row label="Tasks" height="5.75rem" layout={layout} bufferLabel>
+            {layout.tasks.map((item) => (
+              <TaskBlock
+                key={item.block.id}
+                item={item}
+                task={item.block.kind === "task" ? tasksById.get(item.block.taskId) : undefined}
+                onToggleCompleted={onToggleCompleted}
+                onOpenTask={onOpenTask}
+              />
+            ))}
+          </Row>
+          {layout.commitments.length > 0 ? (
+            <Row label="Fixed" height="4rem" layout={layout}>
+              {layout.commitments.map((item) => (
+                <PlainBlock key={item.block.id} item={item} tone="commitment" />
+              ))}
+            </Row>
+          ) : null}
+          {layout.breaks.length > 0 ? (
+            <Row label="Breaks" height="3rem" layout={layout}>
+              {layout.breaks.map((item) => (
+                <PlainBlock key={item.block.id} item={item} tone="break" />
+              ))}
+            </Row>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }
 
-function taskForRow(row: TimelineRow, tasksById: ReadonlyMap<string, Task>): Task | undefined {
-  if (row.kind !== "task" || row.block.kind !== "task") {
-    return undefined;
-  }
-
-  return tasksById.get(row.block.taskId);
-}
-
-function TimelineItem({
-  row,
-  task,
-  onToggleCompleted,
+function Row({
+  label,
+  height,
+  layout,
+  bufferLabel,
+  first,
+  children,
 }: {
-  row: TimelineRow;
-  task: Task | undefined;
-  onToggleCompleted: (id: string) => void;
+  label: string;
+  height: string;
+  layout?: ReturnType<typeof buildTimelineLayout>;
+  bufferLabel?: boolean;
+  first?: boolean;
+  children: ReactNode;
 }) {
-  if (row.kind === "open" || row.kind === "buffer") {
-    return (
-      <Row
-        tone={row.kind}
-        start={row.startMinute}
-        end={row.endMinute}
-        title={row.kind === "buffer" ? "End-of-day buffer" : "Open"}
-        detail={
-          row.kind === "buffer"
-            ? `${formatDuration(row.endMinute - row.startMinute)} kept free of tasks, commitments, and breaks.`
-            : `${formatDuration(row.endMinute - row.startMinute)} still unassigned.`
-        }
-        icon={row.kind === "buffer" ? <Moon className="size-4" aria-hidden="true" /> : null}
-      />
-    );
-  }
-
-  const duration = row.block.endMinute - row.block.startMinute;
-
-  if (row.block.kind === "task") {
-    return (
-      <Row
-        tone="task"
-        start={row.block.startMinute}
-        end={row.block.endMinute}
-        title={row.block.title}
-        detail={<TaskDetail block={row.block} task={task} duration={duration} />}
-        icon={<PenLine className="size-4" aria-hidden="true" />}
-        action={
-          task ? (
-            <label className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm text-muted">
-              <input
-                className="check-input"
-                type="checkbox"
-                checked={task.completed}
-                onChange={() => onToggleCompleted(task.id)}
-              />
-              Mark complete
-            </label>
-          ) : null
-        }
-      />
-    );
-  }
-
-  if (row.block.kind === "commitment") {
-    return (
-      <Row
-        tone="commitment"
-        start={row.block.startMinute}
-        end={row.block.endMinute}
-        title={row.block.title}
-        detail={`${formatDuration(duration)} held in place.`}
-        icon={<Pin className="size-4" aria-hidden="true" />}
-      />
-    );
-  }
-
   return (
-    <Row
-      tone="break"
-      start={row.block.startMinute}
-      end={row.block.endMinute}
-      title="Break"
-      detail={`${formatDuration(duration)} inserted after the work-minute limit.`}
-      icon={<Coffee className="size-4" aria-hidden="true" />}
-    />
+    <div className={`flex ${first ? "" : "border-t border-line/70"}`}>
+      <div className="tl-lane-label" style={{ width: LABEL_COLUMN }}>
+        {label}
+      </div>
+      <div className="relative min-w-0 flex-1" style={{ height }}>
+        {layout ? (
+          <>
+            {layout.ticks.map((tick) => (
+              <span key={tick.minute} className="tl-gridline" style={{ left: `${tick.leftPercent}%` }} aria-hidden="true" />
+            ))}
+            {layout.buffer ? (
+              <div
+                className="tl-buffer"
+                style={{ left: `${layout.buffer.leftPercent}%`, width: `${layout.buffer.widthPercent}%` }}
+                title={`End-of-day buffer, ${formatMinuteRange(layout.buffer.startMinute, layout.buffer.endMinute)}, kept free`}
+              >
+                {bufferLabel ? <span className="tl-buffer-label">Buffer</span> : null}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        {children}
+      </div>
+    </div>
   );
 }
 
-function TaskDetail({
-  block,
+function position(item: LaidOutBlock) {
+  return {
+    left: `calc(${item.leftPercent}% + 1px)`,
+    width: `calc(${item.widthPercent}% - 2px)`,
+  };
+}
+
+function tooltip(block: ScheduledBlock, extra?: string): string {
+  const minutes = block.endMinute - block.startMinute;
+  const parts = [block.title, formatMinuteRange(block.startMinute, block.endMinute), formatDurationShort(minutes)];
+
+  if (extra) {
+    parts.push(extra);
+  }
+
+  return parts.join(" · ");
+}
+
+function TaskBlock({
+  item,
   task,
-  duration,
+  onToggleCompleted,
+  onOpenTask,
 }: {
-  block: ScheduledTaskBlock;
+  item: LaidOutBlock;
   task: Task | undefined;
-  duration: number;
+  onToggleCompleted: (id: string) => void;
+  onOpenTask: (id: string) => void;
 }) {
-  const deadline = task?.deadlineMinute;
-  const window = task?.preferredWindow;
+  const block = item.block as ScheduledTaskBlock;
+  const minutes = block.endMinute - block.startMinute;
+  const label = `${capitalize(block.priority)} priority`;
 
   return (
-    <span>
-      {formatDuration(duration)} · {block.priority} priority · {block.energy} energy
-      {deadline !== undefined ? ` · due ${formatMinute(deadline)}` : ""}
-      {window ? ` · prefers ${formatMinuteRange(window.startMinute, window.endMinute)}` : ""}
+    <div className="tl-block tl-task" style={position(item)} title={tooltip(block, `${label}, ${block.energy} energy`)}>
+      <div className="tl-inner">
+        {task ? (
+          <input
+            className="check-input tl-check"
+            type="checkbox"
+            checked={task.completed}
+            onChange={() => onToggleCompleted(task.id)}
+            aria-label={`Mark ${block.title} complete`}
+          />
+        ) : null}
+        {task ? (
+          <button type="button" className="tl-main" onClick={() => onOpenTask(task.id)} aria-label={`Edit ${block.title}`}>
+            <TaskText block={block} minutes={minutes} priority={block.priority} />
+          </button>
+        ) : (
+          <div className="tl-main">
+            <TaskText block={block} minutes={minutes} priority={block.priority} />
+          </div>
+        )}
+        <EnergyMark level={block.energy} />
+      </div>
+    </div>
+  );
+}
+
+function TaskText({ block, minutes, priority }: { block: ScheduledTaskBlock; minutes: number; priority: Priority }) {
+  return (
+    <>
+      <span className="tl-title">{block.title}</span>
+      <span className="tl-meta tl-dur">
+        {formatDurationShort(minutes)} · {capitalize(priority)}
+      </span>
+      <span className="tl-meta tl-range">{formatMinuteRange(block.startMinute, block.endMinute)}</span>
+    </>
+  );
+}
+
+function EnergyMark({ level }: { level: EnergyLevel }) {
+  const filled = ENERGY_BARS[level];
+
+  return (
+    <span className="tl-energy" role="img" aria-label={`${level} energy`} title={`${capitalize(level)} energy`}>
+      {[1, 2, 3].map((bar) => (
+        <span key={bar} className={bar <= filled ? "tl-energy-bar tl-energy-on" : "tl-energy-bar"} />
+      ))}
     </span>
   );
 }
 
-function Row({
-  tone,
-  start,
-  end,
-  title,
-  detail,
-  icon,
-  action,
-}: {
-  tone: "task" | "commitment" | "break" | "open" | "buffer";
-  start: number;
-  end: number;
-  title: string;
-  detail: ReactNode;
-  icon: ReactNode;
-  action?: ReactNode;
-}) {
+function PlainBlock({ item, tone }: { item: LaidOutBlock; tone: "commitment" | "break" }) {
+  const { block } = item;
+  const minutes = block.endMinute - block.startMinute;
+
   return (
-    <article className="timeline-row">
-      <div className="timeline-time">
-        <p className="font-serif text-base leading-none text-ink sm:text-lg">{formatMinute(start)}</p>
-        <p className="mt-1 text-xs text-faint sm:text-sm">{formatMinute(end)}</p>
-      </div>
-      <div className={`timeline-card timeline-${tone}`}>
-        <p className="kind-pill">
-          <span className={`swatch swatch-${tone}`} aria-hidden="true" />
-          {toneLabel(tone)}
-        </p>
-        <div className="mt-2 flex items-start gap-2">
-          <span className={iconClass(tone)}>{icon}</span>
-          <h3 className={`min-w-0 font-serif text-xl leading-tight sm:text-2xl ${tone === "open" ? "text-muted italic" : "text-ink"}`}>
-            {title}
-          </h3>
+    <div className={`tl-block tl-${tone}`} style={position(item)} title={tooltip(block)}>
+      <div className="tl-inner">
+        <div className="tl-main">
+          <span className="tl-title">{tone === "break" ? "Break" : block.title}</span>
+          {tone === "break" ? (
+            <span className="tl-meta tl-dur">{formatDurationShort(minutes)}</span>
+          ) : (
+            <span className="tl-meta tl-range">
+              {formatMinute(block.startMinute)} – {formatMinute(block.endMinute)}
+            </span>
+          )}
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-muted">{detail}</p>
-        {action}
       </div>
-    </article>
+    </div>
   );
 }
 
-function toneLabel(tone: "task" | "commitment" | "break" | "open" | "buffer"): string {
-  if (tone === "task") {
-    return "Task";
-  }
-
-  if (tone === "commitment") {
-    return "Commitment";
-  }
-
-  if (tone === "break") {
-    return "Break";
-  }
-
-  if (tone === "buffer") {
-    return "Buffer";
-  }
-
-  return "Open";
-}
-
-function iconClass(tone: "task" | "commitment" | "break" | "open" | "buffer"): string {
-  if (tone === "task") {
-    return "mt-1 text-accent";
-  }
-
-  if (tone === "commitment") {
-    return "mt-1 text-commitment";
-  }
-
-  if (tone === "break") {
-    return "mt-1 text-break";
-  }
-
-  if (tone === "open") {
-    return "text-faint";
-  }
-
-  return "mt-1 text-buffer";
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

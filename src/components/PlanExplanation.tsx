@@ -15,8 +15,8 @@ export function PlanExplanation({
   const explanation = explainPlan(result, tasks, commitments, settings);
 
   return (
-    <section aria-labelledby="why-heading" className="mt-12">
-      <h2 id="why-heading" className="font-serif text-3xl text-ink">
+    <section aria-labelledby="why-heading" className="border-t border-line pt-8">
+      <h2 id="why-heading" className="font-serif text-2xl text-ink">
         Why this plan?
       </h2>
       <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">

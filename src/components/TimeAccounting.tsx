@@ -19,8 +19,8 @@ export function TimeAccounting({ accounting }: { accounting: Accounting }) {
   const balanced = total === accounting.windowMinutes && accounting.unusedMinutes >= 0;
 
   return (
-    <section aria-labelledby="accounting-heading" className="mt-12">
-      <h2 id="accounting-heading" className="font-serif text-3xl text-ink">
+    <section aria-labelledby="accounting-heading">
+      <h2 id="accounting-heading" className="font-serif text-2xl text-ink">
         Time accounting
       </h2>
       <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
