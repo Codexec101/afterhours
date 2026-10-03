@@ -1,0 +1,31 @@
+---
+description: Afterhours purpose, stack, design direction, and coding conventions
+alwaysApply: true
+---
+
+# Afterhours
+
+Constraint-aware daily planner. It turns flexible tasks and fixed commitments into a realistic schedule for the rest of one local day. The scheduler is a greedy heuristic, not a globally optimal planner.
+
+## Stack
+
+- React, Vite, TypeScript, Tailwind CSS, Lucide React
+- Vitest for tests, date-fns for dates
+- LocalStorage later for persistence. No auth, backend, database, or extra state library.
+
+## Design
+
+- Calm, time-first layout for the remainder of today
+- Readable type, generous spacing, quiet color: warm night background, one accent
+- Show commitments, tasks, breaks, and the end-of-day buffer as distinct blocks
+
+## Conventions
+
+- Time of day is integer minutes from local midnight (`0–1440`). One calendar day only.
+- Date keys go through `src/utils/dateKey.ts` (`YYYY-MM-DD`). Do not format that key anywhere else.
+- Keep fixed commitments separate from flexible tasks. Never split a task across blocks.
+- Validate before scheduling. Overlaps and overnight windows are errors.
+- Prefer small modules in `src/types`, `src/engine`, and `src/utils`.
+- Energy match and preferred windows are soft. Deadlines and contiguous free time are hard.
+
+A task at minute 540 for 30 minutes occupies `[540, 570)`.
